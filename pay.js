@@ -122,16 +122,32 @@ function openImageOverlay(src) {
 
 // ── 5. Payment Success Handler ──
 
-async function handlePaymentSuccess(orderId, response, packageData) {
-  try {
-    const user = window.cashTreasureUser;
-    if (!user) return;
 
-    await updateDoc(doc(db, "paid_orders", orderId), {
-      status: "paid",
-      payment_id: response.paymentId || response.razorpay_payment_id,
-      paid_at: serverTimestamp()
-    });
+
+
+async function handlePaymentSuccess(orderId, response, packageData) {
+
+
+
+  if (!orderId?.startsWith("PF_")) {
+  console.error("Blocked fake order");
+  return;
+}
+
+
+const user = window.cashTreasureUser;
+if (!user) {
+  console.error("User not found");
+  return;
+}
+
+try {
+
+  if (localStorage.getItem(`paid_${orderId}`)) {
+    console.log("Already processed order");
+    return;
+  }
+
 
     const orderResult = await createOrder(user.uid, {
       instagram_username: packageData.instagram_username || "Paid_Order",
@@ -143,6 +159,9 @@ async function handlePaymentSuccess(orderId, response, packageData) {
     });
 
     if (orderResult.success) {
+
+      localStorage.setItem(`paid_${orderId}`, "1");
+      
       // Show success modal
       document.getElementById('success-details').innerHTML = `
         THE ORDER OF <b>${packageData.followers}</b> FOLLOWERS FOR <b>₹${packageData.amount}</b><br><br>
@@ -157,18 +176,42 @@ startGoldenCountdown(orderResult.completionTime); // reuse logic from order.js
 
       // Email
       if (typeof emailjs !== 'undefined') {
-        emailjs.send("service_swt79ip", "template_urw0ymr", {
-          user_email: user.email,
-          insta_username: packageData.instagram_username || "Paid Purchase",
-          insta_link: packageData.instagram_link || "Real Money Order",
-          credits: `₹${packageData.amount} - ${packageData.followers} Followers`,
-          time_left: "Within 24 hours",
-          order_time: new Date().toLocaleString(),
-          is_first_order: "Real Money Payment"
-        });
+
+if (!localStorage.getItem(`mail_sent_${orderId}`)) {
+
+  try {
+    await emailjs.send(
+      "service_swt79ip",
+      "template_urw0ymr",
+      {
+        user_email: user.email,
+        insta_username:
+          packageData.instagram_username || "Paid Purchase",
+        insta_link:
+          packageData.instagram_link || "Real Money Order",
+        credits:
+          `₹${packageData.amount} - ${packageData.followers} Followers`,
+        time_left: "Within 24 hours",
+        order_time: new Date().toLocaleString(),
+        is_first_order: "Real Money Payment"
+      }
+    );
+
+    localStorage.setItem(
+      `mail_sent_${orderId}`,
+      "1"
+    );
+
+  } catch (mailErr) {
+    console.error("EmailJS Failed:", mailErr);
+  }
+}
       }
     }
-  } catch (e) {
+  } 
+  
+  
+  catch (e) {
     console.error(e);
     showToast("Order placed but email failed", "success");
   }
@@ -225,6 +268,8 @@ export async function buyWithCashfree(packageData) {
     })
 .then(async (result) => {
 
+  
+
   console.log("Cashfree Result:", result);
 
   const verifyRes = await fetch(
@@ -240,6 +285,9 @@ export async function buyWithCashfree(packageData) {
     }
   );
 
+
+  
+
   const verifyData = await verifyRes.json();
 
   if (verifyData.success) {
@@ -254,6 +302,15 @@ export async function buyWithCashfree(packageData) {
       ?.classList.add('visible');
   }
 })
+
+
+.catch((err) => {
+  console.error("Cashfree Error:", err);
+
+  document
+    .getElementById('payment-cancel-modal')
+    ?.classList.add('visible');
+});
 
   } catch (err) {
     console.error(err);
