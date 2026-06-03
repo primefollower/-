@@ -27,6 +27,10 @@ import {
 let currentTimer      = null;
 let currentPackageData = null;
 
+// Initialize EmailJS with your public key
+if (typeof emailjs !== 'undefined') {
+  emailjs.init("q7jXY0z5Uwry4IiZs");
+}
 
 // ── 3. Helper Functions ──
 
@@ -390,5 +394,17 @@ document.getElementById('confirm-instagram-btn')?.addEventListener('click', () =
 
 
 // ── 8. Global Exports ──
-window.initBuyPage    = initBuyPage;
+window.initBuyPage     = initBuyPage;
 window.buyWithCashfree = buyWithCashfree;
+
+// Called by script.js checkPendingPayments for unprocessed server-confirmed payments
+window.triggerPendingPaymentSuccess = async function(orderId, amount, followers) {
+  if (!orderId || localStorage.getItem(`paid_${orderId}`)) return;
+  const packageData = {
+    followers: followers || 0,
+    amount: amount || 0,
+    instagram_username: "Paid_Order",
+    instagram_link: ""
+  };
+  await handlePaymentSuccess(orderId, {}, packageData);
+};
