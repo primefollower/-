@@ -24,7 +24,11 @@ import {
 import {
   onSnapshot,
   increment,
-  getDoc
+  getDoc,
+  query,
+  collection,
+  where,
+  getDocs
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 import { initReferPage } from "./refer.js";
@@ -360,18 +364,25 @@ initReferPage(window.cashTreasureUser);
 
 // Listen for completed payments even if user closed app
 async function checkPendingPayments(uid) {
-  const q = query(collection(db, "payment_events"), 
-    where("userId", "==", uid), 
-    where("processed", "==", false)
-  );
-  const snap = await getDocs(q);
+  try {
+    const q = query(
+      collection(db, "payment_events"),
+      where("userId", "==", uid),
+      where("processed", "==", false)
+    );
+    const snap = await getDocs(q);
 
-  for (const doc of snap.docs) {
-    const data = doc.data();
-    // Trigger success handling
-    await handlePaymentSuccess(data.orderId, {}, { followers: 0, amount: data.amount });
-    // Mark as processed
-    await updateDoc(doc.ref, { processed: true });
+    for (const payDoc of snap.docs) {
+      const data = payDoc.data();
+      // Mark as processed first to prevent double-firing
+      await updateDoc(payDoc.ref, { processed: true });
+      // Delegate to pay.js handler via polling trigger
+      if (window.triggerPendingPaymentSuccess) {
+        await window.triggerPendingPaymentSuccess(data.orderId, data.amount, data.followers || 0);
+      }
+    }
+  } catch (err) {
+    console.error("[checkPendingPayments] Error:", err);
   }
 }
 
