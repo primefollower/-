@@ -90,10 +90,7 @@ document.getElementById('how-link')?.addEventListener('click', () => {
   openImageOverlay('drop.jpg');
 });
 
-// "BUY NOW" image popup
-document.getElementById('btn-open-buy')?.addEventListener('click', () => {
-  openImageOverlay('buy.jpg');
-});
+
 
 /** Creates a full-screen image overlay and appends it to the body. */
 function openImageOverlay(src) {
@@ -230,8 +227,12 @@ export async function buyWithCashfree(packageData) {
     return showToast("You can only order once every 12 hours", "error");
   }
 
-  const btn = document.querySelector('#confirm-instagram-btn');
-  if (btn) btn.disabled = true;
+const btn = document.querySelector('#confirm-instagram-btn');
+
+if (btn) {
+  btn.disabled = true;
+  btn.textContent = "⏳ Processing...";
+}
 
   try {
     const backendUrl = "https://payment-backend-production-0b8d.up.railway.app";
@@ -258,9 +259,11 @@ export async function buyWithCashfree(packageData) {
       );
     }
 
-    const cashfree = Cashfree({
-      mode: "production"
-    });
+  const cashfree = Cashfree({
+  mode: window.location.hostname.includes("localhost")
+    ? "sandbox"
+    : "production"
+});
 
     cashfree.checkout({
       paymentSessionId: data.payment_session_id,
@@ -319,7 +322,10 @@ export async function buyWithCashfree(packageData) {
       "error"
     );
   } finally {
-    if (btn) btn.disabled = false;
+   if (btn) {
+  btn.disabled = false;
+  btn.textContent = "CONFIRM";
+}
   }
 }
 
@@ -399,7 +405,7 @@ function startLimitedTimer(expiryTime) {
   }, 1000);
 }
 
-// Confirm Instagram details → trigger Razorpay
+// Confirm Instagram details → trigger Cashfree
 document.getElementById('confirm-instagram-btn')?.addEventListener('click', () => {
   const username = document.getElementById('paid-ig-username').value.trim();
   const link     = document.getElementById('paid-ig-link').value.trim();
