@@ -223,25 +223,19 @@ export async function buyWithCashfree(packageData) {
   if (!user) return showToast("Please login first", "error");
 
   const canOrder = await canPlacePaidOrder(user.uid);
-  if (!canOrder) {
-    return showToast("You can only order once every 12 hours", "error");
-  }
+  if (!canOrder) return showToast("You can only order once every 12 hours", "error");
 
-const btn = document.querySelector('#confirm-instagram-btn');
+  const btn = document.getElementById('confirm-instagram-btn');
+  if (btn) { btn.disabled = true; btn.textContent = "⏳ Processing..."; }
 
-if (btn) {
-  btn.disabled = true;
-  btn.textContent = "⏳ Processing...";
-}
+  let orderId = null;
 
   try {
     const backendUrl = "https://payment-backend-production-0b8d.up.railway.app";
 
     const res = await fetch(`${backendUrl}/create-order`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         amount: packageData.amount,
         userId: user.uid,
@@ -251,84 +245,51 @@ if (btn) {
     });
 
     const data = await res.json();
+    if (!data.success) return showToast(data.message || "Failed to create order", "error");
 
-    if (!data.success || !data.payment_session_id) {
-      return showToast(
-        data.message || "Failed to create payment session",
-        "error"
-      );
-    }
+    orderId = data.orderId;
 
-  const cashfree = Cashfree({
-  mode: window.location.hostname.includes("localhost")
-    ? "sandbox"
-    : "production"
-});
+    const cashfree = Cashfree({ mode: window.location.hostname.includes("localhost") ? "sandbox" : "production" });
 
     cashfree.checkout({
       paymentSessionId: data.payment_session_id,
       redirectTarget: "_modal"
-    })
-.then(async (result) => {
+    }).catch(err => {
+      console.error("Checkout error:", err);
+    });
 
-  
-
-  console.log("Cashfree Result:", result);
-
-  const verifyRes = await fetch(
-    `${backendUrl}/verify-payment`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-    body: JSON.stringify({
-  orderId: data.orderId
-})
-    }
-  );
-
-
-  
-
-  const verifyData = await verifyRes.json();
-
-  if (verifyData.success) {
-    await handlePaymentSuccess(
-      verifyData.orderId,
-      result,
-      packageData
-    );
-  } else {
-    document
-      .getElementById('payment-cancel-modal')
-      ?.classList.add('visible');
-  }
-})
-
-
-.catch((err) => {
-  console.error("Cashfree Error:", err);
-
-  document
-    .getElementById('payment-cancel-modal')
-    ?.classList.add('visible');
-});
+    // Start polling as fallback
+    startPaymentVerification(orderId, packageData);
 
   } catch (err) {
     console.error(err);
-    showToast(
-      "Payment initialization failed",
-      "error"
-    );
+    showToast("Payment failed", "error");
   } finally {
-   if (btn) {
-  btn.disabled = false;
-  btn.textContent = "CONFIRM";
-}
+    if (btn) { btn.disabled = false; btn.textContent = "CONFIRM"; }
   }
 }
 
+// Polling fallback
+async function startPaymentVerification(orderId, packageData) {
+  let attempts = 0;
+  const interval = setInterval(async () => {
+    attempts++;
+    if (attempts > 20) { clearInterval(interval); return; }
+
+    try {
+      const res = await fetch('https://payment-backend-production-0b8d.up.railway.app/verify-payment', {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId })
+      });
+      const data = await res.json();
+      if (data.success) {
+        clearInterval(interval);
+        await handlePaymentSuccess(orderId, {}, packageData);
+      }
+    } catch (e) {}
+  }, 2500);
+}
 
 // ── 7. Buy Page Initialization + Limited Offer Timer ──
 
