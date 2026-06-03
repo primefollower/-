@@ -29,6 +29,13 @@ import {
 
 import { initReferPage } from "./refer.js";
 
+
+
+
+
+
+
+
 // Force persistent login — prevents auto-logout on tab close / refresh
 await setPersistence(auth, browserLocalPersistence);
 
@@ -463,17 +470,13 @@ document.getElementById("btn-watch-ad")?.addEventListener("click", () => {
 
 // Page loader fade-out
 window.addEventListener("load", () => {
-  const loader = document.getElementById("load2s-overlay");
-  if (loader) {
-    setTimeout(() => {
-      loader.style.transition = "opacity 0.5s ease";
-      loader.style.opacity = "0";
-      setTimeout(() => loader.remove(), 500);
-    }, 2200);
-  }
+  setTimeout(() => {
+    document
+      .getElementById("load2s-overlay")
+      ?.classList.add("hide");
 
-  // DNS check runs after loader clears
-  setTimeout(showDNSWarningIfNeeded, 2600);
+    showDNSWarningIfNeeded();
+  }, 2000);
 });
 
 // Apply dark mode preference
