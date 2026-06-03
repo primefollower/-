@@ -1,4 +1,3 @@
-
 // ================================
 // Prime Follower - Main Application Script
 // ================================
@@ -389,9 +388,9 @@ async function checkPendingPayments(uid) {
 
 // Call it after userReady
 window.addEventListener("userReady", (e) => {
-  checkPendingPayments(e.detail.uid);
+  const uid = e.detail?.uid || e.detail;
+  if (uid) checkPendingPayments(uid);
 });
-
 
 
 // ── 8. Event Listeners ───────────────────────────────────────────────────────
