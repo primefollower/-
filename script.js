@@ -498,29 +498,30 @@ document.getElementById("btn-watch-ad")?.addEventListener("click", () => {
 // ── 9. Initialization ─────────────────────────────────────────────────────────
 
 // Force hide loader after exactly 2 seconds + safety fallback
+// Force Loader Hide - Max 2.5 seconds
 window.addEventListener("load", () => {
   const loader = document.getElementById("load2s-overlay");
   
-  // Force hide after 2 seconds maximum
-  setTimeout(() => {
-    if (loader) {
-      loader.style.transition = "opacity 0.4s ease";
-      loader.style.opacity = "0";
-      
-      setTimeout(() => {
-        loader.style.display = "none";
-        loader.classList.add("hide");
-      }, 400);
-    }
-    showDNSWarningIfNeeded();
-  }, 2000);
+  if (!loader) return;
 
-  // Extra safety: hide immediately if content is ready
+  // Hide after maximum 2.5 seconds
   setTimeout(() => {
-    if (loader && loader.style.display !== "none") {
+    loader.style.transition = "opacity 0.5s ease";
+    loader.style.opacity = "0";
+    
+    setTimeout(() => {
+      loader.style.display = "none";
+    }, 500);
+  }, 2500);
+
+  // Emergency hide after 3 seconds
+  setTimeout(() => {
+    if (loader.style.display !== "none") {
       loader.style.display = "none";
     }
-  }, 2500);
+  }, 3000);
+
+  showDNSWarningIfNeeded();
 });
 
 // Apply dark mode preference
