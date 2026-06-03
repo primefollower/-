@@ -1,5 +1,5 @@
 // ================================
-// Pay Module - Razorpay Integration
+// Pay Module - Cashfree Integration
 // ================================
 
 // ── 1. Imports ──
@@ -15,29 +15,21 @@ import {
 
 import {
   collection,
-  addDoc,
   query,
   where,
   getDocs
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-
 // ── 2. Configuration ──
-
-let currentTimer      = null;
+let currentTimer       = null;
 let currentPackageData = null;
 
-// Initialize EmailJS with your public key
+// Init EmailJS
 if (typeof emailjs !== 'undefined') {
   emailjs.init("q7jXY0z5Uwry4IiZs");
 }
 
-// ── 3. Helper Functions ──
-
-/**
- * Show a brief toast notification.
- * Exported so wallet.js can import it instead of re-defining.
- */
+// ── 3. Toast ──
 export function showToast(message, type = 'success') {
   document.querySelector('.toast')?.remove();
   const toast = document.createElement('div');
@@ -47,9 +39,7 @@ export function showToast(message, type = 'success') {
   setTimeout(() => toast.remove(), 4500);
 }
 
-/**
- * Returns true if the user has not placed a paid order in the last 12 hours.
- */
+// ── 4. Check cooldown ──
 async function canPlacePaidOrder(uid) {
   const q = query(
     collection(db, "paid_orders"),
@@ -58,250 +48,245 @@ async function canPlacePaidOrder(uid) {
   );
   const snap = await getDocs(q);
   if (snap.empty) return true;
-
   const lastPaid = snap.docs[0].data().paid_at?.toDate?.() ?? new Date();
   const hoursSince = (Date.now() - lastPaid.getTime()) / (1000 * 60 * 60);
   return hoursSince >= 12;
 }
 
-
-// ── 4. Modal Handlers ──
-
-/** Close all payment-related modals. */
+// ── 5. Modal Handlers ──
 window.closePaymentModal = function () {
   ['payment-success-modal', 'payment-cancel-modal', 'payment-confirm-modal']
     .forEach(id => document.getElementById(id)?.classList.remove('visible'));
 };
-
-/** Close only the confirmation modal (user pressed Cancel). */
 window.cancelPaymentConfirm = function () {
   document.getElementById('payment-confirm-modal')?.classList.remove('visible');
 };
-
-/** Move from confirmation modal → Instagram details modal. */
 window.proceedToCashfree = function () {
   document.getElementById('payment-confirm-modal')?.classList.remove('visible');
   document.getElementById('instagram-details-modal')?.classList.add('visible');
 };
-
-/** Close the Instagram details modal. */
 window.closeInstagramModal = function () {
   document.getElementById('instagram-details-modal')?.classList.remove('visible');
 };
 
-// "HOW?" image popup
-document.getElementById('how-link')?.addEventListener('click', () => {
-  openImageOverlay('drop.jpg');
-});
+document.getElementById('how-link')?.addEventListener('click', () => openImageOverlay('drop.jpg'));
 
-
-
-/** Creates a full-screen image overlay and appends it to the body. */
 function openImageOverlay(src) {
   const overlay = document.createElement('div');
   overlay.className = 'overlay-popup';
   overlay.style.cssText = `
-    position: fixed; inset: 0; background: rgba(0,0,0,0.3); z-index: 99999;
-    display: flex; align-items: center; justify-content: center;
-    backdrop-filter: blur(12px);
-  `;
+    position:fixed;inset:0;background:rgba(0,0,0,0.3);z-index:99999;
+    display:flex;align-items:center;justify-content:center;backdrop-filter:blur(12px);`;
   overlay.innerHTML = `
-    <div style="position: relative; max-width: 95%; max-height: 92vh;">
-      <img src="${src}" style="max-width: 100%; max-height: 92vh; border-radius: 20px; box-shadow: 0 15px 50px rgba(0,0,0,0.85);">
-      <button
-        onclick="this.closest('.overlay-popup').remove()"
-        style="position: absolute; top: 18px; right: 18px; width: 42px; height: 42px;
-               background: white; color: #111; border: none; border-radius: 50%;
-               font-size: 24px; font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.4);
-               display: flex; align-items: center; justify-content: center;
-               cursor: pointer; z-index: 100000;">✕</button>
-    </div>
-  `;
+    <div style="position:relative;max-width:95%;max-height:92vh;">
+      <img src="${src}" style="max-width:100%;max-height:92vh;border-radius:20px;box-shadow:0 15px 50px rgba(0,0,0,0.85);">
+      <button onclick="this.closest('.overlay-popup').remove()"
+        style="position:absolute;top:18px;right:18px;width:42px;height:42px;
+               background:white;color:#111;border:none;border-radius:50%;
+               font-size:24px;font-weight:bold;cursor:pointer;z-index:100000;">✕</button>
+    </div>`;
   document.body.appendChild(overlay);
 }
 
+// ── 6. Payment Success Handler ──
+async function handlePaymentSuccess(orderId, packageData) {
+  // Guard: no orderId
+  if (!orderId) { console.error("handlePaymentSuccess: no orderId"); return; }
 
-// ── 5. Payment Success Handler ──
-
-
-
-
-async function handlePaymentSuccess(orderId, response, packageData) {
-
-
-
-if (!orderId) {
-  console.error("Blocked: no orderId");
-  return;
-}
-const user = window.cashTreasureUser;
-if (!user) {
-  console.error("User not found");
-  return;
-}
-
-try {
-
+  // Guard: already processed this session
   if (localStorage.getItem(`paid_${orderId}`)) {
-    console.log("Already processed order");
-    return;
+    console.log("Already processed:", orderId); return;
   }
 
-
-    const orderResult = await createOrder(user.uid, {
-      instagram_username: packageData.instagram_username || "Paid_Order",
-      instagram_link: packageData.instagram_link || "",
-      followers: packageData.followers,
-      credits_spent: 0,
-      isPaidOrder: true,
-      paidAmount: packageData.amount
-    });
-
-    if (orderResult.success) {
-
-      localStorage.setItem(`paid_${orderId}`, "1");
-      
-      // Show success modal
-      document.getElementById('success-details').innerHTML = `
-        THE ORDER OF <b>${packageData.followers}</b> FOLLOWERS FOR <b>₹${packageData.amount}</b><br><br>
-        IS SUCCESSFULLY PLACED<br><br>
-        PAYMENT RECEIVED SUCCESSFULLY
-      `;
-      document.getElementById('payment-success-modal')?.classList.add('visible');
-
-
-      document.getElementById('buy-order-progress').style.display = 'block';
-startGoldenCountdown(orderResult.completionTime); // reuse logic from order.js
-
-      // Email
-      if (typeof emailjs !== 'undefined') {
-
-if (!localStorage.getItem(`mail_sent_${orderId}`)) {
+  const user = window.cashTreasureUser;
+  if (!user) { console.error("handlePaymentSuccess: no user"); return; }
 
   try {
-    await emailjs.send(
-      "service_swt79ip",
-      "template_urw0ymr",
-      {
-        user_email: user.email,
-        insta_username:
-          packageData.instagram_username || "Paid Purchase",
-        insta_link:
-          packageData.instagram_link || "Real Money Order",
-        credits:
-          `₹${packageData.amount} - ${packageData.followers} Followers`,
-        time_left: "Within 24 hours",
-        order_time: new Date().toLocaleString(),
-        is_first_order: "Real Money Payment"
-      }
-    );
+    // Create the tracked order (timer + progress bar)
+    const orderResult = await createOrder(user.uid, {
+      instagram_username: packageData.instagram_username || "Paid_Order",
+      instagram_link:     packageData.instagram_link     || "",
+      followers:          packageData.followers,
+      credits_spent:      0,
+      isPaidOrder:        true,
+      paidAmount:         packageData.amount
+    });
 
-    localStorage.setItem(
-      `mail_sent_${orderId}`,
-      "1"
-    );
+    if (!orderResult.success) {
+      showToast("Order creation failed. Contact support.", "error");
+      return;
+    }
 
-  } catch (mailErr) {
-    console.error("EmailJS Failed:", mailErr);
-  }
-}
+    // Mark processed in localStorage to prevent double-fire
+    localStorage.setItem(`paid_${orderId}`, "1");
+
+    // Show success modal
+    const detailsEl = document.getElementById('success-details');
+    if (detailsEl) {
+      detailsEl.innerHTML = `
+        THE ORDER OF <b>${packageData.followers}</b> FOLLOWERS FOR <b>₹${packageData.amount}</b><br><br>
+        IS SUCCESSFULLY PLACED<br><br>
+        PAYMENT RECEIVED SUCCESSFULLY<br><br>
+        WE WILL DELIVER WITHIN 24 HOURS
+      `;
+    }
+    document.getElementById('payment-success-modal')?.classList.add('visible');
+
+    // Start countdown timer if completionTime available
+    if (orderResult.completionTime) {
+      const progressSection = document.getElementById("order-progress");
+      if (progressSection) progressSection.classList.add("visible");
+      // Reuse order.js startCountdown if available
+      if (typeof window.startCountdown === 'function') {
+        window.startCountdown(orderResult.completionTime);
       }
     }
-  } 
-  
-  
-  catch (e) {
-    console.error(e);
-    showToast("Order placed but email failed", "success");
+
+    // Send email (non-blocking)
+    if (typeof emailjs !== 'undefined' && !localStorage.getItem(`mail_sent_${orderId}`)) {
+      try {
+        await emailjs.send("service_swt79ip", "template_urw0ymr", {
+          user_email:     user.email,
+          insta_username: packageData.instagram_username || "Paid Purchase",
+          insta_link:     packageData.instagram_link     || "Real Money Order",
+          credits:        `₹${packageData.amount} - ${packageData.followers} Followers`,
+          time_left:      "Within 24 hours",
+          order_time:     new Date().toLocaleString(),
+          is_first_order: "Real Money Payment"
+        });
+        localStorage.setItem(`mail_sent_${orderId}`, "1");
+      } catch (mailErr) {
+        console.error("EmailJS failed:", mailErr);
+      }
+    }
+
+  } catch (err) {
+    console.error("handlePaymentSuccess error:", err);
+    showToast("Payment recorded. We will process your order shortly.", "success");
   }
 }
 
+// ── 7. Polling Verification ──
+async function startPaymentVerification(orderId, packageData) {
+  let attempts = 0;
+  console.log("🔄 Starting payment verification polling for:", orderId);
 
-// ── 6. Main Payment Function ── (REPLACE WHOLE FUNCTION)
+  const interval = setInterval(async () => {
+    attempts++;
+    if (attempts > 24) {  // 24 × 2.5s = 60 seconds max
+      clearInterval(interval);
+      console.warn("Polling timed out for:", orderId);
+      return;
+    }
 
+    // Already processed? stop polling
+    if (localStorage.getItem(`paid_${orderId}`)) {
+      clearInterval(interval);
+      return;
+    }
 
+    try {
+      const res = await fetch(
+        'https://payment-backend-production-0b8d.up.railway.app/verify-payment',
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orderId })
+        }
+      );
+      const data = await res.json();
+      console.log(`Poll attempt ${attempts}:`, data);
+
+      if (data.success) {
+        clearInterval(interval);
+        await handlePaymentSuccess(orderId, packageData);
+      }
+    } catch (e) {
+      console.warn("Poll error:", e);
+    }
+  }, 2500);
+}
+
+// ── 8. Main Payment Function ──
 export async function buyWithCashfree(packageData) {
   const user = window.cashTreasureUser;
   if (!user) return showToast("Please login first", "error");
 
   const canOrder = await canPlacePaidOrder(user.uid);
-  if (!canOrder) return showToast("You can only order once every 12 hours", "error");
+  if (!canOrder) return showToast("You can only place one order every 12 hours", "error");
 
   const btn = document.getElementById('confirm-instagram-btn');
   if (btn) { btn.disabled = true; btn.textContent = "⏳ Processing..."; }
 
-  let orderId = null;
-
   try {
-    const backendUrl = "https://payment-backend-production-0b8d.up.railway.app";
-
-    const res = await fetch(`${backendUrl}/create-order`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        amount: packageData.amount,
-        userId: user.uid,
-        username: user.username || "User",
-        email: user.email || "user@example.com"
-      })
-    });
+    const res = await fetch(
+      'https://payment-backend-production-0b8d.up.railway.app/create-order',
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amount:   packageData.amount,
+          userId:   user.uid,
+          username: user.username || "User",
+          email:    user.email    || "user@example.com"
+        })
+      }
+    );
 
     const data = await res.json();
-    if (!data.success) return showToast(data.message || "Failed to create order", "error");
+    console.log("Backend response:", data);
 
-    orderId = data.orderId;
+    if (!data.success || !data.payment_session_id) {
+      return showToast(data.message || "Failed to create order", "error");
+    }
 
-    const cashfree = Cashfree({ mode: window.location.hostname.includes("localhost") ? "sandbox" : "production" });
+    const orderId = data.orderId;  // e.g. "PF_1234567890"
+    console.log("Order ID:", orderId);
 
+    // Wait for Cashfree SDK to be ready
+    if (typeof Cashfree === 'undefined') {
+      return showToast("Payment SDK not loaded. Please refresh.", "error");
+    }
+
+    const cashfree = Cashfree({ mode: "production" });
+
+    // Open payment modal — result is often unreliable, so we rely on polling
     cashfree.checkout({
       paymentSessionId: data.payment_session_id,
-      redirectTarget: "_modal"
+      redirectTarget:   "_modal"
+    }).then(async (result) => {
+      console.log("Cashfree checkout result:", result);
+      // Start polling regardless — polling will confirm actual payment status
+      startPaymentVerification(orderId, packageData);
     }).catch(err => {
-      console.error("Checkout error:", err);
+      console.error("Cashfree checkout error:", err);
+      // Even on error, start polling — user may have paid before modal closed
+      startPaymentVerification(orderId, packageData);
+      document.getElementById('payment-cancel-modal')?.classList.add('visible');
     });
 
-    // Start polling as fallback
-    startPaymentVerification(orderId, packageData);
+    // ALSO start polling immediately after modal opens as safety net
+    setTimeout(() => {
+      if (!localStorage.getItem(`paid_${orderId}`)) {
+        startPaymentVerification(orderId, packageData);
+      }
+    }, 5000);
 
   } catch (err) {
-    console.error(err);
-    showToast("Payment failed", "error");
+    console.error("buyWithCashfree error:", err);
+    showToast("Payment initialization failed. Try again.", "error");
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = "CONFIRM"; }
   }
 }
 
-// Polling fallback
-async function startPaymentVerification(orderId, packageData) {
-  let attempts = 0;
-  const interval = setInterval(async () => {
-    attempts++;
-    if (attempts > 20) { clearInterval(interval); return; }
-
-    try {
-      const res = await fetch('https://payment-backend-production-0b8d.up.railway.app/verify-payment', {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId })
-      });
-      const data = await res.json();
-      if (data.success) {
-        clearInterval(interval);
-        await handlePaymentSuccess(orderId, {}, packageData);
-      }
-    } catch (e) {}
-  }, 2500);
-}
-
-// ── 7. Buy Page Initialization + Limited Offer Timer ──
-
+// ── 9. Buy Page Initialization ──
 export async function initBuyPage() {
   const user = window.cashTreasureUser;
   if (!user) return;
 
   let profile = await getUserProfile(user.uid);
 
-  // Create a 60-minute offer window for new users
   if (!profile?.limitedOfferExpiry) {
     const expiryDate = new Date(Date.now() + 60 * 60 * 1000);
     await updateDoc(doc(db, "users", user.uid), {
@@ -313,15 +298,10 @@ export async function initBuyPage() {
   const expiryTime    = profile.limitedOfferExpiry.toDate().getTime();
   const isOfferActive = Date.now() < expiryTime;
 
-  // Show / hide the limited-offer golden card
   const limitedCard = document.getElementById('limited-offer-card');
-  if (limitedCard) {
-    limitedCard.style.display = isOfferActive ? "flex" : "none";
-  }
-
+  if (limitedCard) limitedCard.style.display = isOfferActive ? "flex" : "none";
   if (isOfferActive) startLimitedTimer(expiryTime);
 
-  // Attach pay button listeners (clone to remove any stale listeners first)
   document.querySelectorAll('.btn-pay').forEach(btn => {
     const fresh = btn.cloneNode(true);
     btn.parentNode.replaceChild(fresh, btn);
@@ -331,7 +311,6 @@ export async function initBuyPage() {
     btn.addEventListener('click', () => {
       const card = btn.closest('.order-card');
       if (!card) return;
-
       const followers = parseInt(card.dataset.package, 10);
       const amount    = parseInt(card.dataset.amount,  10);
       currentPackageData = { followers, amount };
@@ -340,27 +319,22 @@ export async function initBuyPage() {
       if (confirmText) {
         confirmText.innerHTML = `
           <b>YOU ARE GOING TO PAY ₹${amount} FOR ${followers} FOLLOWERS</b><br><br>
-          <b>ARE YOU SURE YOU WANT TO PROCEED?</b>
-        `;
+          <b>ARE YOU SURE YOU WANT TO PROCEED?</b>`;
       }
       document.getElementById('payment-confirm-modal')?.classList.add('visible');
     });
   });
 }
 
-/** Starts the countdown timer for the limited-offer card. */
 function startLimitedTimer(expiryTime) {
   if (currentTimer) clearInterval(currentTimer);
-
   currentTimer = setInterval(() => {
     const remaining = Math.floor((expiryTime - Date.now()) / 1000);
-
     if (remaining <= 0) {
       clearInterval(currentTimer);
       document.getElementById('limited-offer-card')?.style.setProperty('display', 'none');
       return;
     }
-
     const min = Math.floor(remaining / 60);
     const sec = remaining % 60;
     const timerEl = document.getElementById('timer-100');
@@ -368,19 +342,14 @@ function startLimitedTimer(expiryTime) {
   }, 1000);
 }
 
-// Confirm Instagram details → trigger Cashfree
+// ── 10. Instagram confirm button ──
 document.getElementById('confirm-instagram-btn')?.addEventListener('click', () => {
-  const username = document.getElementById('paid-ig-username').value.trim();
-  const link     = document.getElementById('paid-ig-link').value.trim();
+  const username = document.getElementById('paid-ig-username')?.value.trim();
+  const link     = document.getElementById('paid-ig-link')?.value.trim();
 
-  if (!username) {
-    showToast("Please enter Instagram username", "error");
-    return;
-  }
-
+  if (!username) { showToast("Please enter Instagram username", "error"); return; }
   if (link && !link.startsWith('https://www.instagram.com')) {
-    showToast("Your Instagram link must start with https://www.instagram.com", "error");
-    return;
+    showToast("Link must start with https://www.instagram.com", "error"); return;
   }
 
   currentPackageData.instagram_username = username;
@@ -390,19 +359,17 @@ document.getElementById('confirm-instagram-btn')?.addEventListener('click', () =
   setTimeout(() => buyWithCashfree(currentPackageData), 200);
 });
 
-
-// ── 8. Global Exports ──
-window.initBuyPage     = initBuyPage;
-window.buyWithCashfree = buyWithCashfree;
-
-// Called by script.js checkPendingPayments for unprocessed server-confirmed payments
+// ── 11. Pending payment recovery (called by script.js) ──
 window.triggerPendingPaymentSuccess = async function(orderId, amount, followers) {
   if (!orderId || localStorage.getItem(`paid_${orderId}`)) return;
-  const packageData = {
+  await handlePaymentSuccess(orderId, {
     followers: followers || 0,
-    amount: amount || 0,
+    amount:    amount    || 0,
     instagram_username: "Paid_Order",
-    instagram_link: ""
-  };
-  await handlePaymentSuccess(orderId, {}, packageData);
+    instagram_link:     ""
+  });
 };
+
+// ── 12. Exports ──
+window.initBuyPage     = initBuyPage;
+window.buyWithCashfree = buyWithCashfree;
