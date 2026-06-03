@@ -130,12 +130,10 @@ async function handlePaymentSuccess(orderId, response, packageData) {
 
 
 
-  if (!orderId?.startsWith("PF_")) {
-  console.error("Blocked fake order");
+if (!orderId) {
+  console.error("Blocked: no orderId");
   return;
 }
-
-
 const user = window.cashTreasureUser;
 if (!user) {
   console.error("User not found");
