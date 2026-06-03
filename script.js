@@ -353,6 +353,35 @@ window.dispatchEvent(
 initReferPage(window.cashTreasureUser);
 });
 
+
+
+
+
+
+// Listen for completed payments even if user closed app
+async function checkPendingPayments(uid) {
+  const q = query(collection(db, "payment_events"), 
+    where("userId", "==", uid), 
+    where("processed", "==", false)
+  );
+  const snap = await getDocs(q);
+
+  for (const doc of snap.docs) {
+    const data = doc.data();
+    // Trigger success handling
+    await handlePaymentSuccess(data.orderId, {}, { followers: 0, amount: data.amount });
+    // Mark as processed
+    await updateDoc(doc.ref, { processed: true });
+  }
+}
+
+// Call it after userReady
+window.addEventListener("userReady", (e) => {
+  checkPendingPayments(e.detail.uid);
+});
+
+
+
 // ── 8. Event Listeners ───────────────────────────────────────────────────────
 
 // ─ Avatar Selection ─
