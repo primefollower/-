@@ -497,15 +497,30 @@ document.getElementById("btn-watch-ad")?.addEventListener("click", () => {
 
 // ── 9. Initialization ─────────────────────────────────────────────────────────
 
-// Page loader fade-out
+// Force hide loader after exactly 2 seconds + safety fallback
 window.addEventListener("load", () => {
+  const loader = document.getElementById("load2s-overlay");
+  
+  // Force hide after 2 seconds maximum
   setTimeout(() => {
-    document
-      .getElementById("load2s-overlay")
-      ?.classList.add("hide");
-
+    if (loader) {
+      loader.style.transition = "opacity 0.4s ease";
+      loader.style.opacity = "0";
+      
+      setTimeout(() => {
+        loader.style.display = "none";
+        loader.classList.add("hide");
+      }, 400);
+    }
     showDNSWarningIfNeeded();
   }, 2000);
+
+  // Extra safety: hide immediately if content is ready
+  setTimeout(() => {
+    if (loader && loader.style.display !== "none") {
+      loader.style.display = "none";
+    }
+  }, 2500);
 });
 
 // Apply dark mode preference
